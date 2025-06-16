@@ -1,72 +1,51 @@
-const Database = require("@replit/database");
-const db = new Database();
 const express = require("express");
 const fs = require("fs");
-const csv = require("csv-parser");
 const app = express();
 
 app.use(express.json());
 app.use(express.static('public'));
 
-function importCsv(filename, dbKey) {
-  return new Promise((resolve, reject) => {
-    const results = [];
-    fs.createReadStream(filename)
-      .pipe(csv())
-      .on("data", (data) => results.push(data))
-      .on("end", async () => {
-        // Aggiungi un campo ID incrementale
-        results.forEach((item, idx) => {
-          item.ID = idx + 1;
-        });
-        await db.set(dbKey, results);
-        resolve();
-      })
-      .on("error", reject);
-  });
+const viniFile = "vini.json";
+const degustazioniFile = "degustazioni.json";
+
+function loadFile(file) {
+  if (fs.existsSync(file)) {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  }
+  return [];
+}
+function saveFile(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-(async () => {
-  // Importa vini e degustazioni PRIMA di avviare il server!
-  await importCsv("vini.csv", "viniList");
-  await importCsv("degustazioni.csv", "degustList");
-  console.log("IMPORT COMPLETATO! Ora avvio il server...");
+app.post("/api/vini", (req, res) => {
+  let viniList = loadFile(viniFile);
+  let newID = viniList.length ? Math.max(...viniList.map(v => v.ID)) + 1 : 1;
+  let vino = req.body.vino;
+  vino.ID = newID;
+  viniList.push(vino);
+  saveFile(viniFile, viniList);
+  res.json({ ok: true, vino });
+});
 
-  // API: lista vini
-  app.get("/api/vini", async (req, res) => {
-    let viniList = (await db.get("viniList")) || [];
-    res.json(viniList);
-  });
+app.post("/api/degustazioni", (req, res) => {
+  let degustList = loadFile(degustazioniFile);
+  let newID = degustList.length ? Math.max(...degustList.map(d => d.ID)) + 1 : 1;
+  let degustazione = req.body.degustazione;
+  degustazione.ID = newID;
+  degustList.push(degustazione);
+  saveFile(degustazioniFile, degustList);
+  res.json({ ok: true, degustazione });
+});
 
-  // API: lista degustazioni
-  app.get("/api/degustazioni", async (req, res) => {
-    let degustList = (await db.get("degustList")) || [];
-    res.json(degustList);
-  });
+app.get("/api/vini", (req, res) => {
+  res.json(loadFile(viniFile));
+});
 
-  // API: aggiungi vino
-  app.post("/api/vini", async (req, res) => {
-    const { vino } = req.body;
-    let viniList = (await db.get("viniList")) || [];
-    let newID = viniList.length ? Math.max(...viniList.map(v => v.ID)) + 1 : 1;
-    vino.ID = newID;
-    viniList.push(vino);
-    await db.set("viniList", viniList);
-    res.json({ ok: true, vino });
-  });
+app.get("/api/degustazioni", (req, res) => {
+  res.json(loadFile(degustazioniFile));
+});
 
-  // API: aggiungi degustazione
-  app.post("/api/degustazioni", async (req, res) => {
-    const { degustazione } = req.body;
-    let degustList = (await db.get("degustList")) || [];
-    let newID = degustList.length ? Math.max(...degustList.map(d => d.ID)) + 1 : 1;
-    degustazione.ID = newID;
-    degustList.push(degustazione);
-    await db.set("degustList", degustList);
-    res.json({ ok: true, degustazione });
-  });
-
-  app.listen(3000, () => {
-    console.log("Server avviato sulla porta 3000");
-  });
-})();
+app.listen(3000, () => {
+  console.log("Server avviato sulla porta 3000");
+});
